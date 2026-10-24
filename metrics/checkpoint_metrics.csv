@@ -1,0 +1,3 @@
+checkpoint,PSNR_cloud,PSNR_full,RMSE_cloud,RMSE_full,SAM_cloud,SAM_full,SSIM_cloud,SSIM_full
+BASELINE_cloudy_input,18.0568,23.0187,0.162,0.0938,7.5601,4.3317,0.4829,0.7296
+checkpoint_latest_ema,31.9567,33.1788,0.0378,0.0319,2.5992,1.9446,0.8278,0.8816
