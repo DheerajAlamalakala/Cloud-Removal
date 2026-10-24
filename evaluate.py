@@ -32,6 +32,7 @@ from skimage.metrics import structural_similarity
 
 from datasets import list_images
 from models import make_generator
+from unet import UNetGenerator
 
 
 # ---------------------------- metrics ([0,1] HxWxC arrays, mask HxW bool) ----------------------------
@@ -86,6 +87,12 @@ def load_generator(path, device, use_ema, fallback):
     ckpt = torch.load(path, map_location=device)
     a = ckpt.get("args", {}) or {}
     ch = a.get("channels", fallback.channels)
+    if a.get("model") == "unet":
+           G = UNetGenerator(ch, ch, base=a.get("base", 64)).to(device)
+           key = "G_A2B_ema" if (use_ema and "G_A2B_ema" in ckpt) else "G_A2B"
+           G.load_state_dict(ckpt[key])
+           G.eval()
+           return G, ckpt.get("epoch", "?"), key
     arch = dict(
         upsample=a.get("upsample", fallback.upsample),
         skip=bool(a.get("skip", fallback.skip)),
