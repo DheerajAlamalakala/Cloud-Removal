@@ -211,6 +211,3 @@ Cloud-Removal/
 - U-Net: Ronneberger et al., *U-Net: Convolutional Networks for Biomedical Image Segmentation*
 - Datasets: RICE / RICE2, SEN12MS-CR (TUM)
 
-## License
-
-Add a license of your choice (MIT is common) before publishing.
