@@ -75,6 +75,16 @@ After training, `best_ema.pt` is saved under `results/sen12mscr/training/` and i
 
 For a fresh clone, checkpoints are intentionally absent: train the selected workflow locally or supply a compatible checkpoint path before evaluation or inference. RICE2 checkpoints and SEN12MS-CR checkpoints are separate models and cannot be substituted for one another.
 
+To compare two locally available SEN12MS-CR checkpoints on the same clean test split, pass both paths to the Windows launcher:
+
+```powershell
+.\run_final_comparison.ps1 `
+  -BaselineCheckpoint '.\results\sen12mscr\baseline\best_ema.pt' `
+  -CandidateCheckpoint '.\results\sen12mscr\candidate\best_ema.pt'
+```
+
+The launcher writes CSV metrics and visual comparisons to `results/sen12mscr/final_comparison/`. It keeps compatibility with the historical local handoff paths when those checkpoint files are present. On other platforms, pass the same checkpoint paths to `benchmarks/compare_models.py` with `--data_root`, `--manifest`, and `--out`.
+
 ## Results and presentation
 
 - [Evaluation overview](docs/evaluation.md) summarizes both dataset tracks without mixing their scores.

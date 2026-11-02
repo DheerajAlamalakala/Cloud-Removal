@@ -1,3 +1,9 @@
+param(
+    [string]$BaselineCheckpoint,
+    [string]$CandidateCheckpoint,
+    [string]$OutputDirectory = '.\results\sen12mscr\final_comparison'
+)
+
 $ErrorActionPreference = 'Stop'
 
 # Run from any directory; all paths resolve from this script's repository root.
@@ -14,10 +20,24 @@ foreach ($file in $required) {
 $compareScript = Join-Path $root 'benchmarks\compare_models.py'
 if (-not (Test-Path $compareScript)) { throw 'benchmarks\compare_models.py is missing.' }
 
-$baseline = Join-Path $root 'checkpoints_for_google_drive\best_models\baseline_best_ema_epoch06.pt'
-$spectral = Join-Path $root 'checkpoints_for_google_drive\best_models\spectral_weighted_best_ema_epoch03.pt'
-foreach ($p in @($baseline, $spectral)) {
-    if (-not (Test-Path $p)) { throw "Checkpoint not found: $p" }
+if (-not $BaselineCheckpoint) {
+    $options = @(
+        (Join-Path $root 'checkpoints_for_google_drive\best_models\baseline_best_ema_epoch06.pt'),
+        (Join-Path $root 'results\sen12mscr\baseline\best_ema.pt')
+    )
+    $BaselineCheckpoint = $options | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+if (-not $CandidateCheckpoint) {
+    $options = @(
+        (Join-Path $root 'checkpoints_for_google_drive\best_models\spectral_weighted_best_ema_epoch03.pt'),
+        (Join-Path $root 'results\sen12mscr\candidate\best_ema.pt')
+    )
+    $CandidateCheckpoint = $options | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+foreach ($p in @($BaselineCheckpoint, $CandidateCheckpoint)) {
+    if (-not $p -or -not (Test-Path -LiteralPath $p -PathType Leaf)) {
+        throw "Checkpoint not found. Pass -BaselineCheckpoint and -CandidateCheckpoint with two compatible local SEN12MS-CR checkpoint paths."
+    }
 }
 
 # Prefer the clean manifest already used in earlier test evaluation.
@@ -38,21 +58,21 @@ if (-not (Test-Path $DataRoot)) { throw "SEN12MS-CR data root not found: $DataRo
 Write-Host "Project:          $root"
 Write-Host "Python:           $python"
 Write-Host "Manifest:         $manifest"
-Write-Host "Baseline:         $baseline"
-Write-Host "Spectral:         $spectral"
+Write-Host "Baseline:         $BaselineCheckpoint"
+Write-Host "Candidate:        $CandidateCheckpoint"
 Write-Host 'Starting paired test evaluation...'
 
 & $python $compareScript `
     --data_root $DataRoot `
     --manifest $manifest `
-    --baseline_ckpt $baseline `
-    --spectral_ckpt $spectral `
+    --baseline_ckpt $BaselineCheckpoint `
+    --spectral_ckpt $CandidateCheckpoint `
     --split test `
     --batch_size 4 `
     --num_workers 8 `
     --amp bf16 `
     --save_visuals 12 `
-    --out '.\results\sen12mscr\final_comparison'
+    --out $OutputDirectory
 
 if ($LASTEXITCODE -ne 0) { throw "Comparison failed with exit code $LASTEXITCODE" }
-Write-Host 'Comparison completed. Results are in results\sen12mscr\final_comparison.'
+Write-Host "Comparison completed. Results are in $OutputDirectory."
