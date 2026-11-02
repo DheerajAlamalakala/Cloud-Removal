@@ -2,7 +2,9 @@
 
 ## Current SEN12MS-CR model
 
-`src/sen12mscr/model.py` defines the residual U-Net used for the current work. `dataset.py` loads paired SEN12MS-CR patches and optional SAR; `losses.py` contains the training losses and metrics; `train.py`, `evaluate.py`, and `evaluate_bands.py` are the primary workflows. The default model uses SAR and predicts all 13 Sentinel-2 bands.
+`src/sen12mscr/model.py` defines the residual U-Net used for the current work. `src/sen12mscr/dataset.py` loads paired SEN12MS-CR patches and optional SAR; `src/sen12mscr/losses.py` contains the training losses and metrics; `src/sen12mscr/train.py`, `src/sen12mscr/evaluate.py`, and `src/sen12mscr/evaluate_bands.py` are the primary workflows. SEN12MS-CR profiling and inspection scripts live in `benchmarks/`. The default model uses SAR and predicts all 13 Sentinel-2 bands.
+
+The older RGB workflow lives in `legacy/rice2/`, including its own `datasets.py`, `models.py`, and `losses.py`. Root `train.py` and `evaluate.py` dispatch to the selected workflow and keep RICE2 as the default for older commands. There are no root-level dataset or model implementation modules; use the workflow-specific paths above.
 
 The browser demo is in `inference/`. It renders an RGB preview from the 13-band prediction and can export the georeferenced multispectral output. The preview transfer curve does not alter the exported reflectance values.
 

@@ -183,7 +183,7 @@ Use the `val` split to choose checkpoints and settings, and report the `test` sp
 | Problem | Fix |
 |---------|-----|
 | Out of memory | Lower `--batch_size` (try 2 or 1), keep `--amp` on, or use `--image_size 128` |
-| Epochs seem to run twice as long on Windows | Windows file systems are case-insensitive, so `*.png` and `*.PNG` can match the same files twice. In `datasets.py`, make the file list `sorted(set(files))` |
+| Epochs seem to run twice as long on Windows | Windows file systems are case-insensitive, so `*.png` and `*.PNG` can match the same files twice. In `legacy/rice2/datasets.py`, make the file list `sorted(set(files))` |
 | Green or neon-looking preview images in early epochs | Common early in CycleGAN training. Check again after 20+ epochs; the cycle and L1 losses should keep falling. Raising `--lambda_identity` can help |
 | Discriminator loss stuck near 0.2 | The discriminator is winning. Rely on the paired and cycle losses, and judge by the preview images and validation metrics rather than `loss_D` |
 | Lost progress when Colab disconnected | Save checkpoints to Google Drive and use `--resume` |

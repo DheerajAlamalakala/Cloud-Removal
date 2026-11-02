@@ -10,10 +10,10 @@ The RICE2 and SEN12MS-CR scores are reported separately. They use different sens
 ## Repository map
 
 ```text
-legacy/rice2/                 Historical CycleGAN and RGB U-Net code
-src/sen12mscr/                Current SEN12MS-CR model, data, training, evaluation
+legacy/rice2/                 Historical CycleGAN and RGB U-Net code, including its datasets.py, models.py, and losses.py
+src/sen12mscr/                Current SEN12MS-CR dataset.py, model.py, losses.py, training and evaluation
 inference/                    SEN12MS-CR browser demo
-benchmarks/                   SEN12MS-CR comparisons and inspection tools
+benchmarks/                   SEN12MS-CR comparisons, profiling and inspection tools
 configs/training/             Training and reproducibility notes
 splits/                       Clean SEN12MS-CR split manifests
 results/rice2/                Preserved RICE2 metrics and images
@@ -21,6 +21,8 @@ results/sen12mscr/            SEN12MS-CR metrics, logs, and visual records
 ```
 
 Root commands remain available for the historical workflow. `--dataset` switches between workflows without moving files or editing imports. Dataset data and model weights stay local and are ignored by Git.
+
+For SEN12MS-CR, use modules under `src/sen12mscr/` and utilities under `benchmarks/`. Root `train.py` and `evaluate.py` are the shared command dispatchers; they preserve the old RICE2 default and accept `--dataset sen12mscr`. The RICE2 implementation stays together under `legacy/rice2/`, keeping similarly named dataset and model modules separated by workflow.
 
 ## Clone and install
 
