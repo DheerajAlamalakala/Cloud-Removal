@@ -28,7 +28,7 @@ def main():
     p.add_argument("--num_workers", type=int, default=8)
     p.add_argument("--amp", default="bf16",
                    choices=["bf16", "fp16", "off"])
-    p.add_argument("--out", default="./runs/band_evaluation")
+    p.add_argument("--out", default="./results/sen12mscr/band_evaluation")
     a = p.parse_args()
 
     device = torch.device(

@@ -50,7 +50,16 @@ The `rice2` selector is the default, so earlier commands such as `python train.p
 
 ### Current SEN12MS-CR workflow
 
-Download and extract the desired SEN12MS-CR season locally. Set `SEN12MSCR_DATA_ROOT` if the data is outside `data/sen12mscr`; do not commit the dataset archives. The clean manifest is included under `splits/`.
+Download and extract the desired SEN12MS-CR season locally. For the included spring manifest, `--data_root` must point to the directory containing the three TUM collections below (not to one of the inner `s2_*` folders). Keep this relative layout so manifest paths resolve:
+
+```text
+data/sen12mscr/
+├── ROIs1158_spring_s1/s1_1/*.tif
+├── ROIs1158_spring_s2/s2_1/*.tif
+└── ROIs1158_spring_s2_cloudy/s2_cloudy_1/*.tif
+```
+
+The clean, scene-level manifest is included under `splits/`. It contains paths and sample identifiers, not imagery; the matching season data must be downloaded separately. If the files live elsewhere, set `$env:SEN12MSCR_DATA_ROOT` in PowerShell or pass `--data_root` on each command. Keep dataset archives and extracted imagery out of Git.
 
 ```powershell
 python train.py --dataset sen12mscr --data_root .\data\sen12mscr --manifest .\splits\sen12mscr_spring_clean.json --out .\results\sen12mscr\training --epochs 30 --batch_size 4 --crop 128
@@ -62,7 +71,9 @@ Use `python train.py --dataset sen12mscr --help` for all options. Evaluate a sav
 python evaluate.py --dataset sen12mscr --data_root .\data\sen12mscr --manifest .\splits\sen12mscr_spring_clean.json --ckpt .\results\sen12mscr\training\best_ema.pt --split test --out .\results\sen12mscr\evaluation
 ```
 
-The presentation demo uses the local fine-tuned EMA checkpoint. Set `SEN12MSCR_CHECKPOINT` and, if needed, `SEN12MSCR_DATA_ROOT`, then run `inference/run_demo.ps1`. The previous path `demo/run_demo.ps1` is retained as a compatibility launcher.
+After training, `best_ema.pt` is saved under `results/sen12mscr/training/` and is excluded from Git. Evaluation writes metrics and visualizations under `results/sen12mscr/evaluation/`; model comparison defaults to `results/sen12mscr/final_comparison/`. The Windows demo auto-detects the trained checkpoint and the comparison CSV. To use another checkpoint or data location, set `$env:SEN12MSCR_CHECKPOINT` and/or `$env:SEN12MSCR_DATA_ROOT`, then run `inference/run_demo.ps1`. The previous path `demo/run_demo.ps1` remains as a compatibility launcher.
+
+For a fresh clone, checkpoints are intentionally absent: train the selected workflow locally or supply a compatible checkpoint path before evaluation or inference. RICE2 checkpoints and SEN12MS-CR checkpoints are separate models and cannot be substituted for one another.
 
 ## Results and presentation
 

@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path $PSScriptRoot).Path
 $HandoffRoot = Join-Path $ProjectRoot 'checkpoints_for_google_drive'
-$FineTuneSource = Join-Path $ProjectRoot 'runs\spring_finetune_lr2e5'
+$FineTuneSource = Join-Path $ProjectRoot 'results\sen12mscr\training'
+$LegacyFineTuneSource = Join-Path $ProjectRoot 'runs\spring_finetune_lr2e5'
 $FineTuneDest = Join-Path $HandoffRoot 'fine_tunes\spring_finetune_lr2e5'
 
 $copies = @(
@@ -10,6 +11,11 @@ $copies = @(
     [pscustomobject]@{ Source = Join-Path $FineTuneSource 'log.csv'; Destination = Join-Path $FineTuneDest 'log.csv' },
     [pscustomobject]@{ Source = Join-Path $ProjectRoot 'splits\sen12mscr_spring_clean.json'; Destination = Join-Path $FineTuneDest 'split_manifest_eval_clean.json' }
 )
+
+if (-not (Test-Path -LiteralPath (Join-Path $FineTuneSource 'best_ema.pt') -PathType Leaf) -and
+    (Test-Path -LiteralPath (Join-Path $LegacyFineTuneSource 'best_ema.pt') -PathType Leaf)) {
+    $FineTuneSource = $LegacyFineTuneSource
+}
 
 foreach ($pair in $copies) {
     if (-not (Test-Path -LiteralPath $pair.Source -PathType Leaf)) {

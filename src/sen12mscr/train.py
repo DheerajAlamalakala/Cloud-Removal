@@ -51,7 +51,7 @@ def parse_args():
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     p.add_argument("--amp", default="auto", choices=["auto", "bf16", "fp16", "off"])
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--out", default="./runs/spring_resunet_sar", help="Local run/checkpoint directory")
+    p.add_argument("--out", default="./results/sen12mscr/training", help="Local run/checkpoint directory")
     p.add_argument("--backup_dir", default=None, help="Optional Drive/Google Drive sync folder for checkpoints")
     p.add_argument("--backup_every", type=int, default=1, help="Copy checkpoints to backup_dir every N epochs")
     p.add_argument("--resume", action="store_true")

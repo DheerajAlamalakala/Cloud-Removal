@@ -28,7 +28,7 @@ def parse_args():
     p.add_argument("--manifest", required=True)
     p.add_argument("--baseline_ckpt", required=True)
     p.add_argument("--spectral_ckpt", "--candidate_ckpt", dest="spectral_ckpt", required=True)
-    p.add_argument("--out", default="runs/final_comparison")
+    p.add_argument("--out", default="results/sen12mscr/final_comparison")
     p.add_argument("--split", choices=["val", "test"], default="test")
     p.add_argument("--batch_size", type=int, default=4)
     p.add_argument("--num_workers", type=int, default=4)
