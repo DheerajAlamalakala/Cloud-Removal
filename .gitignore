@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/
+datasets/
+runs/
+/checkpoints/
+checkpoints_for_google_drive/
+*.pt
+*.pth
+*.ckpt
+*.tar.gz
+*.tif
