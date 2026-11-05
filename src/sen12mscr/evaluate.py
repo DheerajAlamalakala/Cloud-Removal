@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import DataLoader
 from PIL import Image
 from .dataset import Sen12msCR, read_manifest
+from .parquet_dataset import Sen12msCRParquet
 from .losses import LPIPSLoss, cloud_mask, per_image_metrics
 from .model import ResUNet
 
@@ -17,6 +18,7 @@ from .model import ResUNet
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data_root", required=True)
+    p.add_argument("--data_format", choices=["geotiff", "parquet"], default="geotiff")
     p.add_argument("--ckpt", required=True)
     p.add_argument("--manifest", required=True)
     p.add_argument("--split", default="test", choices=["val", "test"])
@@ -40,8 +42,14 @@ def main():
         def to_rgb(tensor):
             # Use Sentinel-2 RGB bands: B4, B3, B2 (indices 3, 2, 1).
             image = tensor[[3, 2, 1]].detach().float().cpu()
-            image = image.clamp(0, 1).permute(1, 2, 0).numpy()
-            return (image * 255).round().astype(np.uint8)
+            # Match the fixed exposure and sRGB display transform used by the demo.
+            linear = (image * 2.5).clamp(0, 1).permute(1, 2, 0).numpy()
+            srgb = np.where(
+                linear <= 0.0031308,
+                12.92 * linear,
+                1.055 * np.power(linear, 1 / 2.4) - 0.055,
+            )
+            return (srgb.clip(0, 1) * 255).round().astype(np.uint8)
 
         cloudy_img = to_rgb(cloudy)
         prediction_img = to_rgb(prediction)
@@ -79,14 +87,24 @@ def main():
     items = manifest["splits"][a.split]
     if not items:
         raise RuntimeError(f"Manifest split '{a.split}' is empty")
-    dataset = Sen12msCR(
-        a.data_root, items, use_sar=use_sar, s2_scale=a.s2_scale,
-        sar_min_db=a.sar_min_db, sar_max_db=a.sar_max_db,
-    )
-    loader = DataLoader(
-        dataset, batch_size=a.batch_size, shuffle=False, num_workers=a.num_workers,
-        pin_memory=device.type == "cuda", persistent_workers=a.num_workers > 0,
-    )
+    if a.data_format == "parquet":
+        dataset = Sen12msCRParquet(
+            a.data_root, items, use_sar=use_sar, s2_scale=a.s2_scale,
+            sar_min_db=a.sar_min_db, sar_max_db=a.sar_max_db, batch_size=a.batch_size,
+        )
+        loader = DataLoader(
+            dataset, batch_size=None, num_workers=a.num_workers,
+            pin_memory=device.type == "cuda", persistent_workers=False,
+        )
+    else:
+        dataset = Sen12msCR(
+            a.data_root, items, use_sar=use_sar, s2_scale=a.s2_scale,
+            sar_min_db=a.sar_min_db, sar_max_db=a.sar_max_db,
+        )
+        loader = DataLoader(
+            dataset, batch_size=a.batch_size, shuffle=False, num_workers=a.num_workers,
+            pin_memory=device.type == "cuda", persistent_workers=a.num_workers > 0,
+        )
     lp = LPIPSLoss(a.lpips_net, spatial=True).to(device) if a.lpips else None
 
     records = []
@@ -115,6 +133,8 @@ def main():
                     "image": name,
                     "roi": batch["roi"][idx],
                     "scene": batch["scene"][idx],
+                    "season": batch.get("season", batch["roi"])[idx],
+                    "patch": batch.get("patch", [""] * len(batch["name"]))[idx],
                 }
                 row.update({
     f"baseline_{key}": float(value[idx].cpu())
@@ -136,9 +156,12 @@ def main():
 
     os.makedirs(a.out, exist_ok=True)
     csv_path = os.path.join(a.out, f"per_image_{a.split}.csv")
-    metric_keys = [k for k in records[0] if k not in ("image", "roi", "scene")]
+    metric_keys = [
+        key for key in records[0]
+        if key not in ("image", "roi", "scene", "season", "patch")
+    ]
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["image", "roi", "scene"] + metric_keys)
+        writer = csv.DictWriter(f, fieldnames=["image", "roi", "scene", "season", "patch"] + metric_keys)
         writer.writeheader()
         writer.writerows(records)
 

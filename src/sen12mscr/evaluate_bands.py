@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from .dataset import Sen12msCR, read_manifest
 from .losses import cloud_mask
 from .model import ResUNet
+from .parquet_dataset import Sen12msCRParquet
 
 
 BANDS = [
@@ -22,13 +23,14 @@ BANDS = [
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--data_root", required=True)
+    p.add_argument("--data_format", choices=["geotiff", "parquet"], default="geotiff")
     p.add_argument("--ckpt", required=True)
     p.add_argument("--manifest", required=True)
     p.add_argument("--batch_size", type=int, default=8)
     p.add_argument("--num_workers", type=int, default=8)
     p.add_argument("--amp", default="bf16",
                    choices=["bf16", "fp16", "off"])
-    p.add_argument("--out", default="./results/sen12mscr/band_evaluation")
+    p.add_argument("--out", default="./runs/band_evaluation")
     a = p.parse_args()
 
     device = torch.device(
@@ -56,22 +58,38 @@ def main():
     manifest = read_manifest(a.manifest)
     items = manifest["splits"]["test"]
 
-    dataset = Sen12msCR(
-        a.data_root,
-        items,
-        use_sar=use_sar,
-        s2_scale=10000.0,
-        sar_min_db=-25.0,
-        sar_max_db=0.0,
-    )
-
-    loader = DataLoader(
-        dataset,
-        batch_size=a.batch_size,
-        shuffle=False,
-        num_workers=a.num_workers,
-        pin_memory=device.type == "cuda",
-    )
+    if a.data_format == "parquet":
+        dataset = Sen12msCRParquet(
+            a.data_root,
+            items,
+            use_sar=use_sar,
+            s2_scale=10000.0,
+            sar_min_db=-25.0,
+            sar_max_db=0.0,
+            batch_size=a.batch_size,
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=None,
+            num_workers=a.num_workers,
+            pin_memory=device.type == "cuda",
+        )
+    else:
+        dataset = Sen12msCR(
+            a.data_root,
+            items,
+            use_sar=use_sar,
+            s2_scale=10000.0,
+            sar_min_db=-25.0,
+            sar_max_db=0.0,
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=a.batch_size,
+            shuffle=False,
+            num_workers=a.num_workers,
+            pin_memory=device.type == "cuda",
+        )
 
     # Global error sums.
     global_sums = {

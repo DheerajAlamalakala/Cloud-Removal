@@ -4,6 +4,14 @@ import torch
 import torch.nn.functional as F
 from .dataset import RGB
 
+BAND_NAMES = ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11", "B12"]
+
+
+# Dark-scene stretch. Reflectance is ~0.03-0.1, so raw SSIM/edge/LPIPS barely register texture.
+# eps avoids the infinite sqrt derivative at exactly 0 (nodata pixels are filled with 0).
+def stretch(x, eps=1e-6):
+    return x.clamp(0, 1).add(eps).sqrt()
+
 
 def _gauss(size=11, sigma=1.5, device="cpu"):
     g = torch.arange(size, dtype=torch.float32, device=device) - size // 2
@@ -29,10 +37,35 @@ def edge_loss(p, t):
     return F.l1_loss(gx(p), gx(t)) + F.l1_loss(gy(p), gy(t))
 
 
+def curvature_loss(p, t):
+    """Target-matched second derivatives; penalizes false line/ringing structure without smoothing all edges."""
+    dxx = lambda a: a[..., :, 2:] - 2 * a[..., :, 1:-1] + a[..., :, :-2]
+    dyy = lambda a: a[..., 2:, :] - 2 * a[..., 1:-1, :] + a[..., :-2, :]
+    return F.smooth_l1_loss(dxx(p), dxx(t)) + F.smooth_l1_loss(dyy(p), dyy(t))
+
+
+def edge_err_map(p, t):
+    """Per-pixel gradient L1 error -> (B,1,H,W), zero-padded at the last row/col."""
+    gx = lambda a: a[..., :, 1:] - a[..., :, :-1]
+    gy = lambda a: a[..., 1:, :] - a[..., :-1, :]
+    ex = F.pad((gx(p) - gx(t)).abs().mean(1, keepdim=True), (0, 1, 0, 0))
+    ey = F.pad((gy(p) - gy(t)).abs().mean(1, keepdim=True), (0, 0, 0, 1))
+    return ex + ey
+
+
 def sam_map(p, t, eps=1e-8):
-    """Spectral angle in degrees per pixel -> (B,1,H,W)."""
+    """Spectral angle in degrees per pixel -> (B,1,H,W). Unchanged so old results stay comparable."""
     cos = (p * t).sum(1, keepdim=True) / (p.norm(dim=1, keepdim=True) * t.norm(dim=1, keepdim=True) + eps)
     return torch.rad2deg(torch.acos(cos.clamp(-1 + 1e-6, 1 - 1e-6)))
+
+
+# Differentiable spectral loss: (1 - cos) instead of acos (acos gradient explodes near 0 deg).
+# Pixels where either spectrum has near-zero magnitude (nodata, pure black) are excluded.
+def sam_loss(p, t, eps=1e-6, min_norm=0.01):
+    pn, tn = p.norm(dim=1, keepdim=True), t.norm(dim=1, keepdim=True)
+    valid = ((pn > min_norm) & (tn > min_norm)).float()
+    cos = (p * t).sum(1, keepdim=True) / (pn * tn + eps)
+    return ((1 - cos) * valid).sum() / valid.sum().clamp(min=1)
 
 
 def cloud_mask(cloudy, clear, thr=0.05):
@@ -42,7 +75,7 @@ def cloud_mask(cloudy, clear, thr=0.05):
 
 
 class LPIPSLoss(torch.nn.Module):
-    """LPIPS on RGB bands (B4,B3,B2), brightened for display and scaled to [-1,1]."""
+    """LPIPS on RGB bands (B4,B3,B2), sqrt-stretched and scaled to [-1,1]."""
 
     def __init__(self, net="vgg", spatial=False):
         super().__init__()
@@ -53,7 +86,8 @@ class LPIPSLoss(torch.nn.Module):
 
     @staticmethod
     def prep(x):
-        return (x[:, RGB].float() * 2.5).clamp(0, 1) * 2 - 1
+        # NOTE: LPIPS values are NOT comparable with numbers from the old prep (x*2.5).
+        return stretch(x[:, RGB].float()) * 2 - 1
 
     def forward(self, p, t):
         context = torch.autocast("cuda", enabled=False) if p.is_cuda else nullcontext()
@@ -63,13 +97,15 @@ class LPIPSLoss(torch.nn.Module):
 
 class CRLoss(torch.nn.Module):
     def __init__(self, l_ssim=0.5, l_edge=2.0, l_lpips=0.1,
-                 cloud_w=4.0, lpips_net="vgg"):
+                 cloud_w=4.0, lpips_net="vgg", l_sam=0.5, l_curvature=0.0):
         super().__init__()
 
         self.l_ssim = l_ssim
         self.l_edge = l_edge
         self.l_lpips = l_lpips
         self.cloud_w = cloud_w
+        self.l_sam = l_sam
+        self.l_curvature = l_curvature
 
         # Sentinel-2 spectral weights: B01 through B12.
         weights = torch.tensor([
@@ -92,11 +128,24 @@ class CRLoss(torch.nn.Module):
             * (1 + self.cloud_w * m)
         ).mean()
         pc = pred.clamp(0, 1)
-        parts = dict(l1=l1, ssim=1 - ssim_map(pc, clear).mean(), edge=edge_loss(pred, clear))
+        ps, cs = stretch(pc), stretch(clear)
+        parts = dict(l1=l1, ssim=1 - ssim_map(ps, cs).mean(), edge=edge_loss(ps, cs))
         total = l1 + self.l_ssim * parts["ssim"] + self.l_edge * parts["edge"]
+        weighted = dict(l1=l1, ssim=self.l_ssim * parts["ssim"], edge=self.l_edge * parts["edge"])
+        if self.l_curvature > 0:
+            parts["curvature"] = curvature_loss(ps, cs)
+            total = total + self.l_curvature * parts["curvature"]
+            weighted["curvature"] = self.l_curvature * parts["curvature"]
+        if self.l_sam > 0:
+            parts["sam"] = sam_loss(pc, clear)
+            total = total + self.l_sam * parts["sam"]
+            weighted["sam"] = self.l_sam * parts["sam"]
         if self.lp is not None:
             parts["lpips"] = self.lp(pc, clear)
             total = total + self.l_lpips * parts["lpips"]
+            weighted["lpips"] = self.l_lpips * parts["lpips"]
+        # Weighted contributions (detached) so you can see which term dominates.
+        parts.update({f"w_{k}": v.detach() for k, v in weighted.items()})
         return total, parts
 
 
@@ -112,6 +161,7 @@ def per_image_metrics(pred, clear, mask, lp_model=None):
     nan = torch.full((B,), float("nan"), device=pred.device)
     has = cnt > 0
     mse_f, mse_c = se.flatten(1).mean(1), wmean(se)
+    # Original metrics, unchanged, so they stay comparable with earlier experiments.
     out = dict(
         PSNR_full=-10 * torch.log10(mse_f.clamp(min=1e-10)),
         PSNR_cloud=torch.where(has, -10 * torch.log10(mse_c.clamp(min=1e-10)), nan),
@@ -120,6 +170,28 @@ def per_image_metrics(pred, clear, mask, lp_model=None):
         SAM_full=am.flatten(1).mean(1), SAM_cloud=torch.where(has, wmean(am), nan),
         mask_cov=mask.flatten(1).mean(1),
     )
+    # Added: texture-sensitive metrics on sqrt-stretched RGB (reported alongside, not instead).
+    ps, cs = stretch(pred[:, RGB]), stretch(clear[:, RGB])
+    sm_s = ssim_map(ps, cs)
+    em = edge_err_map(ps, cs)
+    inv = 1.0 - mask
+    cnt_clear = inv.flatten(1).sum(1)
+    out["SSIM_rgb_s"] = sm_s.flatten(1).mean(1)
+    out["SSIM_rgb_s_cloud"] = torch.where(has, wmean(sm_s), nan)
+    out["EDGE_rgb_s"] = em.flatten(1).mean(1)
+    out["EDGE_rgb_s_cloud"] = torch.where(has, wmean(em), nan)
+    out["EDGE_rgb_s_clear"] = torch.where(
+        cnt_clear > 0, (em * inv).flatten(1).sum(1) / cnt_clear.clamp(min=1), nan)
+    row_peak = em.mean(-1).amax(-1).squeeze(1)
+    col_peak = em.mean(-2).amax(-1).squeeze(1)
+    line_peak = torch.maximum(row_peak, col_peak)
+    line_mean = em.mean((1, 2, 3))
+    out["LINE_edge_peak"] = line_peak
+    out["LINE_edge_ratio"] = line_peak / line_mean.clamp(min=1e-8)
+    # Added: per-band MAE in the cloud region, to see which bands actually improve.
+    mae_c = ((pred - clear).abs() * mask).flatten(2).sum(2) / cnt.clamp(min=1)[:, None]  # (B,13)
+    for i, name in enumerate(BAND_NAMES):
+        out[f"MAE_cloud_{name}"] = torch.where(has, mae_c[:, i], nan)
     if lp_model is not None:
         lm = lp_model.m(lp_model.prep(pred), lp_model.prep(clear))  # spatial=True -> (B,1,H,W)
         out["LPIPS_full"] = lm.flatten(1).mean(1)

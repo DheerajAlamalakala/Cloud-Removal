@@ -10,6 +10,9 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path $PSScriptRoot).Path
 Set-Location $root
 . (Join-Path $root 'paths.ps1')
+if ($DataFormat -eq 'parquet' -and -not $PSBoundParameters.ContainsKey('OutputDirectory')) {
+    $OutputDirectory = '.\runs\run2_parquet\test_comparison'
+}
 $required = @('src\sen12mscr\train.py', 'src\sen12mscr\dataset.py', 'src\sen12mscr\model.py', 'src\sen12mscr\losses.py')
 foreach ($file in $required) {
     if (-not (Test-Path (Join-Path $root $file))) {
@@ -21,17 +24,31 @@ $compareScript = Join-Path $root 'benchmarks\compare_models.py'
 if (-not (Test-Path $compareScript)) { throw 'benchmarks\compare_models.py is missing.' }
 
 if (-not $BaselineCheckpoint) {
-    $options = @(
-        (Join-Path $root 'checkpoints_for_google_drive\best_models\baseline_best_ema_epoch06.pt'),
-        (Join-Path $root 'results\sen12mscr\baseline\best_ema.pt')
-    )
+    if ($DataFormat -eq 'parquet') {
+        $options = @(
+            (Join-Path $root 'runs\spring_loss_v2_30epoch\best_ema.pt'),
+            (Join-Path $root 'checkpoints_for_google_drive\fine_tunes\spring_loss_v2_30epoch\best_ema.pt')
+        )
+    } else {
+        $options = @(
+            (Join-Path $root 'checkpoints_for_google_drive\best_models\baseline_best_ema_epoch06.pt'),
+            (Join-Path $root 'results\sen12mscr\baseline\best_ema.pt')
+        )
+    }
     $BaselineCheckpoint = $options | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 if (-not $CandidateCheckpoint) {
-    $options = @(
-        (Join-Path $root 'checkpoints_for_google_drive\best_models\spectral_weighted_best_ema_epoch03.pt'),
-        (Join-Path $root 'results\sen12mscr\candidate\best_ema.pt')
-    )
+    if ($DataFormat -eq 'parquet') {
+        $options = @(
+            (Join-Path $root 'runs\run2_parquet\best_ema.pt'),
+            (Join-Path $root 'checkpoints_for_google_drive\run2_parquet\best_ema.pt')
+        )
+    } else {
+        $options = @(
+            (Join-Path $root 'checkpoints_for_google_drive\best_models\spectral_weighted_best_ema_epoch03.pt'),
+            (Join-Path $root 'results\sen12mscr\candidate\best_ema.pt')
+        )
+    }
     $CandidateCheckpoint = $options | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 foreach ($p in @($BaselineCheckpoint, $CandidateCheckpoint)) {
@@ -41,14 +58,21 @@ foreach ($p in @($BaselineCheckpoint, $CandidateCheckpoint)) {
 }
 
 # Prefer the clean manifest already used in earlier test evaluation.
-$manifestCandidates = @((Join-Path $root 'splits\sen12mscr_spring_clean.json'))
+$manifestCandidates = if ($DataFormat -eq 'parquet') {
+    @($Manifest)
+} else {
+    @($Manifest, (Join-Path $root 'splits\sen12mscr_spring_clean.json'))
+}
 $manifest = $manifestCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $manifest) {
+if (-not $manifest -and $DataFormat -eq 'geotiff') {
     $manifest = Get-ChildItem (Join-Path $root 'splits') -Recurse -File -Filter '*clean*.json' -ErrorAction SilentlyContinue |
         Select-Object -First 1 -ExpandProperty FullName
 }
 if (-not $manifest) {
-    throw 'No clean manifest found under splits. The comparison has NOT been started; do not use the unfiltered manifest because it contains the known corrupt SAR sample.'
+    if ($DataFormat -eq 'parquet') {
+        throw "Parquet manifest not found: $Manifest. Run benchmarks\inspect_parquet.py first or set SEN12MSCR_MANIFEST."
+    }
+    throw 'No clean GeoTIFF manifest found under splits. The comparison has NOT been started; do not use the unfiltered manifest because it contains the known corrupt SAR sample.'
 }
 
 $python = Join-Path $root '.venv\Scripts\python.exe'
@@ -58,12 +82,14 @@ if (-not (Test-Path $DataRoot)) { throw "SEN12MS-CR data root not found: $DataRo
 Write-Host "Project:          $root"
 Write-Host "Python:           $python"
 Write-Host "Manifest:         $manifest"
+Write-Host "Data format:      $DataFormat"
 Write-Host "Baseline:         $BaselineCheckpoint"
 Write-Host "Candidate:        $CandidateCheckpoint"
 Write-Host 'Starting paired test evaluation...'
 
 & $python $compareScript `
     --data_root $DataRoot `
+    --data_format $DataFormat `
     --manifest $manifest `
     --baseline_ckpt $BaselineCheckpoint `
     --spectral_ckpt $CandidateCheckpoint `

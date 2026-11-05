@@ -2,6 +2,8 @@
 venv/
 __pycache__/
 *.py[cod]
+*.bak
+*.tmp
 .pytest_cache/
 data/
 datasets/
@@ -12,4 +14,6 @@ checkpoints_for_google_drive/
 *.pth
 *.ckpt
 *.tar.gz
+*.parquet
+*.arrow
 *.tif

@@ -63,3 +63,7 @@ The detailed per-image metrics, grouped summaries, and four-panel visual compari
 ## Metric limitation
 
 The dataset does not provide the pixel cloud labels used here. The pseudo-cloud region is estimated from RGB cloudy/clear differences, so it can also include haze, shadow, or acquisition-date changes. Label these as *pseudo-cloud-region* metrics and do not compare them directly with metrics based on supplied ground-truth masks.
+
+## All-season Parquet Run 2
+
+The later all-season fine-tune and its paired Hub Parquet test summary are documented in [PARQUET_RUN2.md](PARQUET_RUN2.md). Those results use a separate split and protocol from the GeoTIFF evaluations above and should be reported separately.

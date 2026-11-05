@@ -73,7 +73,33 @@ Use `python train.py --dataset sen12mscr --help` for all options. Evaluate a sav
 python evaluate.py --dataset sen12mscr --data_root .\data\sen12mscr --manifest .\splits\sen12mscr_spring_clean.json --ckpt .\results\sen12mscr\training\best_ema.pt --split test --out .\results\sen12mscr\evaluation
 ```
 
-After training, `best_ema.pt` is saved under `results/sen12mscr/training/` and is excluded from Git. Evaluation writes metrics and visualizations under `results/sen12mscr/evaluation/`; model comparison defaults to `results/sen12mscr/final_comparison/`. The Windows demo auto-detects the trained checkpoint and the comparison CSV. To use another checkpoint or data location, set `$env:SEN12MSCR_CHECKPOINT` and/or `$env:SEN12MSCR_DATA_ROOT`, then run `inference/run_demo.ps1`. The previous path `demo/run_demo.ps1` remains as a compatibility launcher.
+After training, `best_ema.pt` is saved under `results/sen12mscr/training/` and is excluded from Git. Evaluation writes metrics and visualizations under `results/sen12mscr/evaluation/`; model comparison defaults to `results/sen12mscr/final_comparison/`. The Windows demo auto-detects a local checkpoint and comparison CSV. GeoTIFF is the default demo input; see the optional Parquet workflow below to use the Hugging Face mirror. Set `$env:SEN12MSCR_CHECKPOINT` and/or `$env:SEN12MSCR_DATA_ROOT` to override local paths, then run `inference/run_demo.ps1`.
+
+### Optional all-season Hugging Face Parquet workflow
+
+The SEN12MS-CR Hugging Face Parquet mirror can be used without changing the existing GeoTIFF workflow. Download its complete Parquet files and dataset `README.md` into `data/sen12mscr_parquet/`. The reader streams row groups and builds a local manifest from the split assignments in that README; the manifest stores relative file names and sample counts, not imagery. Install the project requirements first (`pyarrow` and `PyYAML` provide the Parquet and dataset-card support).
+
+Audit one patch from each season and build the split manifest:
+
+```powershell
+python benchmarks/inspect_parquet.py --data_root .\data\sen12mscr_parquet --manifest .\runs\run2_parquet\split_manifest.json
+```
+
+Train or fine-tune with the generated manifest:
+
+```powershell
+python train.py --dataset sen12mscr --data_format parquet --data_root .\data\sen12mscr_parquet --manifest .\runs\run2_parquet\split_manifest.json --out .\runs\run2_parquet --epochs 20 --batch_size 8 --crop 128 --base 48 --lr 2e-5 --lambda_curvature 0.05
+```
+
+Use `--init_from` with a local EMA checkpoint to fine-tune from an existing model. To evaluate, pass the same data format, data root, and manifest to `evaluate.py`:
+
+```powershell
+python evaluate.py --dataset sen12mscr --data_format parquet --data_root .\data\sen12mscr_parquet --manifest .\runs\run2_parquet\split_manifest.json --ckpt .\runs\run2_parquet\best_ema.pt --split test --out .\runs\run2_parquet\evaluation
+```
+
+`benchmarks/compare_models.py` and `evaluate_bands.py` also accept `--data_format parquet`. For the browser demo, set `$env:SEN12MSCR_DATA_FORMAT = 'parquet'`, `$env:SEN12MSCR_DATA_ROOT`, `$env:SEN12MSCR_MANIFEST`, and `$env:SEN12MSCR_CHECKPOINT` before starting `inference/run_demo.ps1`. When using a locally trained checkpoint, the launcher can find `runs/run2_parquet/best_ema.pt` automatically.
+
+Parquet patches have no georeferencing. The browser demo therefore offers a 13-band reflectance NPZ download for Parquet inputs; GeoTIFF inputs continue to support georeferenced GeoTIFF export. The optional enhanced preview changes display only, not predictions or metrics. Run outputs, manifests, downloaded data, and weights remain local and ignored by Git.
 
 For a fresh clone, checkpoints are intentionally absent: train the selected workflow locally or supply a compatible checkpoint path before evaluation or inference. RICE2 checkpoints and SEN12MS-CR checkpoints are separate models and cannot be substituted for one another.
 
@@ -90,7 +116,9 @@ The launcher writes CSV metrics and visual comparisons to `results/sen12mscr/fin
 ## Results and presentation
 
 - [Evaluation overview](docs/evaluation.md) summarizes both dataset tracks without mixing their scores.
+- [Current experiment status](docs/sen12mscr/CURRENT_EXPERIMENT_STATUS.md) records the Spring and all-season Parquet runs.
 - [Experiment details](docs/sen12mscr/EXPERIMENT_RESULTS.md) records the validation-based SEN12MS-CR model selection and its limitations.
+- [Run 2 Parquet report](docs/sen12mscr/PARQUET_RUN2.md) records the all-season workflow, paired test summary, and evaluation limits.
 - [Demo and supervisor wording](docs/sen12mscr/EXPO_GUIDE.md) gives a short walkthrough.
 - [Supervisor brief](docs/supervisor_brief.md) explains the project transition and suggested presentation flow.
 
