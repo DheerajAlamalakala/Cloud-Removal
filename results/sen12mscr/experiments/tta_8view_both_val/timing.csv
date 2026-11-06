@@ -1,0 +1,2 @@
+samples,views,baseline_model_seconds,tta_model_seconds,baseline_ms_per_sample,tta_ms_per_sample,tta_over_baseline,total_wall_seconds
+7176,8,330.7390326007153,2636.971149000863,46.08960877936389,367.4708959031303,7.972966263659441,3078.762363100017
